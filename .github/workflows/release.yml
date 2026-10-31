@@ -1,11 +1,11 @@
 name: Release
 
-# Pushing a tag named v<source.versionName>, such as v1.0.0, builds a signed APK
-# and attaches it to a GitHub release as source.apk. Its link is what you add in
-# Saikou Neo. The signing key and passwords are repository secrets.
+# Run this from the Actions tab to release the version in gradle.properties. It
+# builds a signed APK and attaches it to a new GitHub release as source.apk. Its
+# link is what you add in Saikou Neo. The signing key and its password are
+# repository secrets.
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,15 +25,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check the tag matches the version
+      - name: Check this version isn't released yet
+        id: version
         env:
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          version="$(grep '^source.versionName=' gradle.properties | cut -d= -f2-)"
-          if [ "$TAG" != "v$version" ]; then
-            echo "::error::Tag $TAG doesn't match source.versionName $version in gradle.properties."
+          version="$(grep '^source.version=' gradle.properties | cut -d= -f2-)"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::Version $version is already released. Raise source.version in gradle.properties first."
             exit 1
           fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
       - name: Write the signing key
         env:
@@ -54,6 +56,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # KEY_ALIAS and KEY_PASSWORD are only needed for a key made differently from the README's.
       - name: Test and build
         env:
           SIGNING_STORE_FILE: ${{ runner.temp }}/release.jks
@@ -66,8 +69,8 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           cp source/build/outputs/apk/release/source-release.apk "$RUNNER_TEMP/source.apk"
-          gh release create "$TAG" "$RUNNER_TEMP/source.apk" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --verify-tag
+          gh release create "$TAG" "$RUNNER_TEMP/source.apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
           rm -f "$RUNNER_TEMP/release.jks"

@@ -7,6 +7,15 @@ plugins {
 fun setting(name: String): String = providers.gradleProperty("source.$name").get()
 
 val apiVersion = setting("apiVersion")
+val sourceVersion = setting("version")
+
+// Android also needs a whole number that goes up with each release: 1.2.3 becomes 10203.
+val versionNumber =
+    Regex("""(\d{1,2})\.(\d{1,2})\.(\d{1,2})""")
+        .matchEntire(sourceVersion)
+        ?.destructured
+        ?.let { (major, minor, patch) -> major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt() }
+        ?: error("source.version must be three numbers below 100, such as 1.0.0, not \"$sourceVersion\"")
 
 // The release key, when one is set. CI sets these from repository secrets.
 fun secret(name: String): String? = providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -21,8 +30,8 @@ android {
         applicationId = setting("id")
         minSdk = 24
         targetSdk = 37
-        versionCode = setting("versionCode").toInt()
-        versionName = setting("versionName")
+        versionCode = versionNumber
+        versionName = sourceVersion
         manifestPlaceholders["sourceName"] = setting("name")
         manifestPlaceholders["sourceClass"] = setting("class")
         manifestPlaceholders["apiVersion"] = apiVersion.toInt()
@@ -33,8 +42,9 @@ android {
             create("release") {
                 storeFile = file(keystore)
                 storePassword = secret("SIGNING_STORE_PASSWORD")
-                keyAlias = secret("SIGNING_KEY_ALIAS")
-                keyPassword = secret("SIGNING_KEY_PASSWORD")
+                // keytool's default store keeps the key under the same password.
+                keyAlias = secret("SIGNING_KEY_ALIAS") ?: "source"
+                keyPassword = secret("SIGNING_KEY_PASSWORD") ?: storePassword
             }
         }
     }
