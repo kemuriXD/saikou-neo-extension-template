@@ -1,98 +1,114 @@
 # Saikou Neo extension template
 
-A starting point for a Saikou Neo source. Saikou Neo is an anime app for
-Android TV and Fire TV that ships with no video sources. A source is a small
-APK the app loads to play an episode. The app picks the anime and episode from
-its own catalogue, and the source returns servers and streams for it.
+Saikou Neo is an anime app for Android TV and Fire TV. It picks the anime and
+episode itself, and a source tells it where to play them. This template is a
+working source with no servers yet. Copy it, fill in your code, and press a
+button to get an APK link you can add in the app.
 
-This template builds a source that has no servers yet. Copy it, fill in a few
-settings, and push a tag to get a signed APK on a GitHub release, ready to add
-in Saikou Neo.
+## Make your source
 
-## Make your own
+### 1. Copy the template
 
-1. Select **Use this template** on GitHub to make your own repo.
-2. In `gradle.properties`, set your source's id, name, class and version.
-3. Rename `StarterSource` and its package to match `source.id` and
-   `source.class`, then write `servers()` and `stream()`.
-4. Make a signing key and add it to your repo's secrets (see below).
-5. Push a tag named after the version, such as `v1.0.0`.
+Select **Use this template**, then **Create a new repository**.
 
-The release workflow runs the tests, builds a signed APK and attaches it to a
-release as `source.apk`. Add its link in Saikou Neo under
-**Settings > Sources > Add a source**:
+### 2. Name it
 
-```text
-https://github.com/<you>/<repo>/releases/download/v1.0.0/source.apk
+Open `gradle.properties` and change the three lines at the top:
+
+```properties
+source.name=My source
+source.id=io.github.yourname.mysource
+source.version=1.0.0
 ```
 
-The link to your newest release stays the same each time:
+The name is what people see in Saikou Neo. The id is unique to your source:
+lowercase words with dots, usually starting with your GitHub name.
 
-```text
-https://github.com/<you>/<repo>/releases/latest/download/source.apk
-```
+### 3. Write your code
 
-## Settings
+All of it goes in
+[`StarterSource.kt`](source/src/main/kotlin/com/example/source/StarterSource.kt),
+which has two functions:
 
-All of them are in `gradle.properties` and go into the APK's manifest.
+- `servers(episode)` gets the anime's titles, ids and episode number. Find the
+  episode on your site and return the servers that have it.
+- `stream(server)` gets one of those servers back. Return the video links for
+  it.
 
-| Setting | What it is |
-| --- | --- |
-| `source.id` | The package name. A new version with the same id replaces the old one in the app. |
-| `source.name` | The name shown in Settings > Sources. |
-| `source.class` | The class that implements `SourceExtension`. It needs a constructor with no arguments. |
-| `source.versionCode` | A whole number. Raise it for every release. |
-| `source.versionName` | Shown in the app. The release tag is `v` followed by this. |
-| `source.apiVersion` | The extension API version you build against. |
-
-## The extension API
-
-The source builds against the Saikou Neo extension API from Maven Central,
-`io.github.kemurixd:saikou-neo-extension-api`. Its version is the API version.
-The app provides the API and the Kotlin standard library when it loads the
-source, so both are `compileOnly` and the APK stays a few kilobytes.
-
-The app loads sources built for its own API version, or an older one that's
-still compatible. When a new API version comes out, raise `source.apiVersion`
-only if you need something it adds.
-
-R8 is off. If you turn it on, add a keep rule for your `source.class` and its
-constructor. The API's own keep rules don't apply to a `compileOnly`
-dependency.
-
-## Signing
-
-Every release is signed with your own key. Keep the key and its passwords
-private and backed up: the key is never committed, and the release workflow
-reads it from repository secrets.
-
-Make a key with `keytool`, which comes with any JDK:
-
-```bash
-keytool -genkeypair -v -keystore release.jks -alias source -keyalg RSA -keysize 4096 -validity 10000
-```
-
-Then add four secrets under **Settings > Secrets and variables > Actions** in
-your repo, or with the GitHub CLI:
-
-```bash
-base64 -w 0 release.jks | gh secret set KEYSTORE_BASE64
-gh secret set KEYSTORE_PASSWORD
-gh secret set KEY_ALIAS --body source
-gh secret set KEY_PASSWORD
-```
-
-On macOS, use `base64 -i release.jks` instead. To build a signed APK on your
-own computer, set `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`,
-`SIGNING_KEY_ALIAS` and `SIGNING_KEY_PASSWORD` and run
-`./gradlew :source:assembleRelease`. Without them, the release APK is unsigned
-and the app can't use it.
-
-## Build and test
+The comments in the file show what to return. To check your code, change the
+sample episode in
+[`StarterSourceTest.kt`](source/src/test/kotlin/com/example/source/StarterSourceTest.kt)
+to one your site has, then run:
 
 ```bash
 ./gradlew :source:testDebugUnitTest
 ```
 
-The test calls the source with a sample episode. Change it to an anime and
-episode your site has.
+### 4. Add a signing key
+
+You only do this once. The release signs your APK with a key kept in your
+repo's secrets, so every version of your source comes from the same key.
+
+Make the key with `keytool`, which comes with Java. It asks for a password and
+a few questions; any answers will do. Keep the file and password somewhere
+safe, because you need the same key for every update.
+
+```bash
+keytool -genkeypair -keystore release.jks -alias source -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Then, in your repo on GitHub, go to **Settings > Secrets and variables >
+Actions** and add two secrets:
+
+| Name | Value |
+| --- | --- |
+| `KEYSTORE_PASSWORD` | The password you chose. |
+| `KEYSTORE_BASE64` | The key file as text. Make it with the command below and paste the output. |
+
+On macOS or Linux:
+
+```bash
+base64 < release.jks
+```
+
+On Windows, in PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("release.jks"))
+```
+
+Never commit `release.jks`. The template's `.gitignore` already leaves it out.
+
+### 5. Release it
+
+Go to **Actions > Release > Run workflow**. It runs your tests, builds a signed
+APK and puts it on a new release. Then, in Saikou Neo, open **Settings >
+Sources > Add a source** and type the link:
+
+```text
+https://github.com/<you>/<repo>/releases/latest/download/source.apk
+```
+
+That link always points to your newest release.
+
+## Update your source
+
+Raise `source.version` in `gradle.properties`, such as from `1.0.0` to `1.1.0`,
+and run the Release workflow again. Each version can only be released once.
+People get the update by adding the link again.
+
+## Good to know
+
+- Saikou Neo provides the extension API and Kotlin when it loads your source,
+  so the APK only holds your own code.
+- To use a library, such as an HTTP client, add it to `dependencies` in
+  [`source/build.gradle.kts`](source/build.gradle.kts) with `implementation`.
+  It goes into your APK.
+- Renaming `StarterSource` or its package is optional. If you do, update
+  `source.class` in `gradle.properties` to match.
+- R8 is off. If you turn it on, add a keep rule for the class in
+  `source.class`.
+- To build a signed APK on your own computer, set `SIGNING_STORE_FILE` to the
+  key file's path and `SIGNING_STORE_PASSWORD` to its password, then run
+  `./gradlew :source:assembleRelease`.
+- Only publish sources you have the right to share.
