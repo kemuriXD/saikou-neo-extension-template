@@ -96,10 +96,3 @@ and the app can't use it.
 
 The test calls the source with a sample episode. Change it to an anime and
 episode your site has.
-
-## Licence
-
-This template is released into the public domain under the
-[Unlicense](LICENSE). Your source can use any licence, but Saikou Neo loads it
-into the app, which is GPL-3.0, so pick one that's compatible with the GPL.
-Only publish sources you have the right to share.
