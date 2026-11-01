@@ -55,7 +55,8 @@ jobs:
 
       # A source's own repo has one source, so its tag is the version and the links say "latest".
       # A shared repo has many, so each is named by a short hash of the source's id. That keeps
-      # the source's name out of the public repo's tags and file names.
+      # the source's name out of the public repo's tags and file names. The logo, if there is an
+      # icon.png, is named the same way.
       - name: Work out where it goes
         id: target
         env:
@@ -66,23 +67,29 @@ jobs:
           if [ -n "${{ vars.RELEASES_REPO }}" ]; then
             key="$(printf '%s' "$ID" | sha256sum | cut -c1-12)"
             tag="$key-v$VERSION"
+            name="$key"
+            base="https://github.com/$SHARED/releases/download/$tag"
             {
               echo "repo=$SHARED"
               echo "tag=$tag"
-              echo "apk=$key.apk"
-              echo "apk_url=https://github.com/$SHARED/releases/download/$tag/$key.apk"
               echo "list=sources.json"
               echo "list_url=https://raw.githubusercontent.com/$SHARED/HEAD/sources.json"
             } >> "$GITHUB_OUTPUT"
           else
+            name="source"
+            base="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
             {
               echo "repo=$GITHUB_REPOSITORY"
               echo "tag=v$VERSION"
-              echo "apk=source.apk"
-              echo "apk_url=https://github.com/$GITHUB_REPOSITORY/releases/latest/download/source.apk"
               echo "list=source.json"
               echo "list_url=https://github.com/$GITHUB_REPOSITORY/releases/latest/download/source.json"
             } >> "$GITHUB_OUTPUT"
+          fi
+          echo "apk=$name.apk" >> "$GITHUB_OUTPUT"
+          echo "apk_url=$base/$name.apk" >> "$GITHUB_OUTPUT"
+          if [ -f icon.png ]; then
+            echo "icon=$name.png" >> "$GITHUB_OUTPUT"
+            echo "icon_url=$base/$name.png" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check this version isn't released yet
@@ -124,7 +131,8 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :source:testDebugUnitTest :source:assembleRelease
 
-      # One entry in the list format Saikou Neo reads. A shared list keeps everyone else's entries.
+      # One entry in the list format Saikou Neo reads, with the logo's link when there is one. A
+      # shared list keeps everyone else's entries.
       - name: Write the list
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -134,14 +142,15 @@ jobs:
           VERSION: ${{ steps.source.outputs.version }}
           API: ${{ steps.source.outputs.api }}
           APK_URL: ${{ steps.target.outputs.apk_url }}
+          ICON_URL: ${{ steps.target.outputs.icon_url }}
           LIST: ${{ steps.target.outputs.list }}
         run: |
           list='{"sources":[]}'
           if [ -n "${{ vars.RELEASES_REPO }}" ] && gh api "repos/$REPO/contents/sources.json" > "$RUNNER_TEMP/current.json" 2>/dev/null; then
             list="$(jq -r .content "$RUNNER_TEMP/current.json" | base64 --decode)"
           fi
-          echo "$list" | jq --arg id "$ID" --arg name "$NAME" --arg version "$VERSION" --argjson api "$API" --arg apk "$APK_URL" \
-            '.sources = ([.sources[] | select(.id != $id)] + [{id: $id, name: $name, version: $version, api: $api, apk: $apk}] | sort_by(.name))' \
+          echo "$list" | jq --arg id "$ID" --arg name "$NAME" --arg version "$VERSION" --argjson api "$API" --arg apk "$APK_URL" --arg icon "$ICON_URL" \
+            '.sources = ([.sources[] | select(.id != $id)] + [{id: $id, name: $name, version: $version, api: $api, apk: $apk} + (if $icon == "" then {} else {icon: $icon} end)] | sort_by(.name))' \
             > "$RUNNER_TEMP/$LIST"
           cat "$RUNNER_TEMP/$LIST"
 
@@ -179,11 +188,17 @@ jobs:
           REPO: ${{ steps.target.outputs.repo }}
           TAG: ${{ steps.target.outputs.tag }}
           APK: ${{ steps.target.outputs.apk }}
+          ICON: ${{ steps.target.outputs.icon }}
           LIST: ${{ steps.target.outputs.list }}
           CODE_LINE: ${{ steps.code.outputs.line }}
         run: |
           cp source/build/outputs/apk/release/source-release.apk "$RUNNER_TEMP/$APK"
           rm -f "$RUNNER_TEMP/release.jks"
+          files=("$RUNNER_TEMP/$APK")
+          if [ -n "$ICON" ]; then
+            cp icon.png "$RUNNER_TEMP/$ICON"
+            files+=("$RUNNER_TEMP/$ICON")
+          fi
           if [ -n "${{ vars.RELEASES_REPO }}" ]; then
             # The list goes first, so in an empty repo the app makes the first commit and the release has one to tag.
             # Everything here is done by the app, so its bot is the only author shown.
@@ -191,9 +206,9 @@ jobs:
             args=(--method PUT "repos/$REPO/contents/sources.json" -f message="Update sources.json" -f content="$content")
             if [ -f "$RUNNER_TEMP/current.json" ]; then args+=(-f sha="$(jq -r .sha "$RUNNER_TEMP/current.json")"); fi
             gh api "${args[@]}" > /dev/null
-            gh release create "$TAG" "$RUNNER_TEMP/$APK" --repo "$REPO" --title "$TAG" --notes "$CODE_LINE" --latest=false
+            gh release create "$TAG" "${files[@]}" --repo "$REPO" --title "$TAG" --notes "$CODE_LINE" --latest=false
           else
-            gh release create "$TAG" "$RUNNER_TEMP/$APK" "$RUNNER_TEMP/$LIST" --repo "$REPO" \
+            gh release create "$TAG" "${files[@]}" "$RUNNER_TEMP/$LIST" --repo "$REPO" \
               --target "$GITHUB_SHA" --title "$TAG" --notes "$CODE_LINE" --generate-notes
           fi
           echo "$CODE_LINE" >> "$GITHUB_STEP_SUMMARY"

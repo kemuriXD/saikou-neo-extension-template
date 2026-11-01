@@ -17,6 +17,38 @@ val versionNumber =
         ?.let { (major, minor, patch) -> major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt() }
         ?: error("source.version must be three numbers below 100, such as 1.0.0, not \"$sourceVersion\"")
 
+// The logo, if there's an icon.png next to gradle.properties. It becomes the APK's icon, and Release links it in the list.
+val iconFile: RegularFile = rootProject.layout.projectDirectory.file("icon.png")
+val hasIcon = iconFile.asFile.exists()
+
+/** Checks icon.png against what Saikou Neo will show, then copies it in as the drawable `source_icon`. */
+abstract class SourceIcon : DefaultTask() {
+    @get:InputFile
+    abstract val icon: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val res: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val png = icon.get().asFile.readBytes()
+        val signature = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        fun side(at: Int) = (0 until 4).fold(0L) { value, i -> (value shl 8) or (png[at + i].toLong() and 0xFF) }
+        check(png.size >= 24 && png.copyOf(8).contentEquals(signature)) { "icon.png must be a PNG file" }
+        check(png.size <= 256 * 1024) { "icon.png must be 256 KB or less, but it's ${png.size / 1024} KB" }
+        check(side(16) in 1..1024 && side(20) in 1..1024) { "icon.png must be at most 1024 x 1024 pixels" }
+        val folder = res.get().dir("drawable-nodpi").asFile
+        folder.deleteRecursively()
+        folder.mkdirs()
+        folder.resolve("source_icon.png").writeBytes(png)
+    }
+}
+
+val sourceIcon =
+    tasks.register<SourceIcon>("sourceIcon") {
+        icon.set(iconFile)
+    }
+
 // The release key, when one is set. CI sets these from repository secrets.
 fun secret(name: String): String? = providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
 
@@ -35,6 +67,7 @@ android {
         manifestPlaceholders["sourceName"] = setting("name")
         manifestPlaceholders["sourceClass"] = setting("class")
         manifestPlaceholders["apiVersion"] = apiVersion.toInt()
+        manifestPlaceholders["sourceIcon"] = if (hasIcon) "@drawable/source_icon" else "@null"
     }
 
     signingConfigs {
@@ -62,6 +95,12 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (hasIcon) variant.sources.res?.addGeneratedSourceDirectory(sourceIcon, SourceIcon::res)
     }
 }
 

@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Saikou Neo reads these before it loads any code. The values come from gradle.properties. -->
-    <application android:label="${sourceName}">
+    <!-- Saikou Neo reads these before it loads any code. The values come from gradle.properties, and the icon from
+         icon.png, if there is one. -->
+    <application
+        android:icon="${sourceIcon}"
+        android:label="${sourceName}">
         <meta-data
             android:name="ani.saikou.neo.extension.api"
             android:value="${apiVersion}" />

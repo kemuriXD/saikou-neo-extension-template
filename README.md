@@ -24,6 +24,12 @@ source.version=1.0.0
 The name is what people see in Saikou Neo. The id is unique to your source:
 lowercase words with dots, usually starting with your GitHub name.
 
+To give it a logo, put a square PNG named `icon.png` next to
+`gradle.properties`. It can be up to 1024 x 1024 pixels and 256 KB, and 512 x
+512 is plenty. The build makes it the APK's icon, and Release uploads it and
+adds its link to the list, so Saikou Neo shows it beside your source's name.
+Without one, the app shows the name's first letter.
+
 ### 3. Write your code
 
 All of it goes in
@@ -122,9 +128,9 @@ Release as before. The APK goes on a release in the public repo, and the
 source's entry in its `sources.json` is updated. The code in the release notes
 is for that list.
 
-The app's bot is the only author the public repo shows. Releases and APKs are
-named by a short hash of the source's id, so the public repo's tags and file
-names don't name the source. The list still has the source's name and id,
+The app's bot is the only author the public repo shows. Releases, APKs and
+logos are named by a short hash of the source's id, so the public repo's tags
+and file names don't name the source. The list still has the source's name and id,
 because Saikou Neo shows them.
 
 ## Good to know
