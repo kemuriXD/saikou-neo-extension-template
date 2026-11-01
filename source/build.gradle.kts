@@ -17,7 +17,7 @@ val versionNumber =
         ?.let { (major, minor, patch) -> major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt() }
         ?: error("source.version must be three numbers below 100, such as 1.0.0, not \"$sourceVersion\"")
 
-// The logo, if there's an icon.png next to gradle.properties. It becomes the APK's icon, and Release links it in the list.
+// The logo, if there's an icon.png next to gradle.properties. It becomes the APK's icon, where Saikou Neo reads it.
 val iconFile: RegularFile = rootProject.layout.projectDirectory.file("icon.png")
 val hasIcon = iconFile.asFile.exists()
 
