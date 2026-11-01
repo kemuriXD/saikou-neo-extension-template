@@ -49,12 +49,12 @@ to one your site has, then run:
 You only do this once. The release signs your APK with a key kept in your
 repo's secrets, so every version of your source comes from the same key.
 
-Make the key with `keytool`, which comes with Java. It asks for a password and
-a few questions; any answers will do. Keep the file and password somewhere
-safe, because you need the same key for every update.
+Make the key with `keytool`, which comes with Java. It asks for a password.
+The key's name goes into every APK, so keep it generic. Keep the file and
+password somewhere safe, because you need the same key for every update.
 
 ```bash
-keytool -genkeypair -keystore release.jks -alias source -keyalg RSA -keysize 4096 -validity 10000
+keytool -genkeypair -keystore release.jks -alias source -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Source"
 ```
 
 Then, in your repo on GitHub, go to **Settings > Secrets and variables >
@@ -118,6 +118,11 @@ separate public repo instead. Several private sources can share one, and its
 Release as before. The APK goes on a release in the public repo, and the
 source's entry in its `sources.json` is updated. The code in the release notes
 is for that list.
+
+The app's bot is the only author the public repo shows. Releases and APKs are
+named by a short hash of the source's id, so the public repo's tags and file
+names don't name the source. The list still has the source's name and id,
+because Saikou Neo shows them.
 
 ## Good to know
 

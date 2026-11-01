@@ -54,6 +54,8 @@ android {
             // With R8 on, add a keep rule for source.class. The API's own rules don't reach a compileOnly dependency.
             isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("release")
+            // Leaves the commit it was built from out of the APK.
+            vcsInfo.include = false
         }
     }
 

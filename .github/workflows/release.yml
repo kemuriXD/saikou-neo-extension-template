@@ -54,7 +54,8 @@ jobs:
           repositories: ${{ vars.RELEASES_REPO }}
 
       # A source's own repo has one source, so its tag is the version and the links say "latest".
-      # A shared repo has many, so each release is named after its source.
+      # A shared repo has many, so each is named by a short hash of the source's id. That keeps
+      # the source's name out of the public repo's tags and file names.
       - name: Work out where it goes
         id: target
         env:
@@ -63,12 +64,13 @@ jobs:
           SHARED: ${{ vars.RELEASES_OWNER }}/${{ vars.RELEASES_REPO }}
         run: |
           if [ -n "${{ vars.RELEASES_REPO }}" ]; then
-            tag="$ID-v$VERSION"
+            key="$(printf '%s' "$ID" | sha256sum | cut -c1-12)"
+            tag="$key-v$VERSION"
             {
               echo "repo=$SHARED"
               echo "tag=$tag"
-              echo "apk=$ID.apk"
-              echo "apk_url=https://github.com/$SHARED/releases/download/$tag/$ID.apk"
+              echo "apk=$key.apk"
+              echo "apk_url=https://github.com/$SHARED/releases/download/$tag/$key.apk"
               echo "list=sources.json"
               echo "list_url=https://raw.githubusercontent.com/$SHARED/HEAD/sources.json"
             } >> "$GITHUB_OUTPUT"
@@ -165,19 +167,19 @@ jobs:
           REPO: ${{ steps.target.outputs.repo }}
           TAG: ${{ steps.target.outputs.tag }}
           APK: ${{ steps.target.outputs.apk }}
-          NAME: ${{ steps.source.outputs.name }}
-          VERSION: ${{ steps.source.outputs.version }}
           LIST: ${{ steps.target.outputs.list }}
           CODE_LINE: ${{ steps.code.outputs.line }}
         run: |
           cp source/build/outputs/apk/release/source-release.apk "$RUNNER_TEMP/$APK"
           rm -f "$RUNNER_TEMP/release.jks"
           if [ -n "${{ vars.RELEASES_REPO }}" ]; then
-            gh release create "$TAG" "$RUNNER_TEMP/$APK" --repo "$REPO" --title "$NAME $VERSION" --notes "$CODE_LINE" --latest=false
+            # The list goes first, so in an empty repo the app makes the first commit and the release has one to tag.
+            # Everything here is done by the app, so its bot is the only author shown.
             content="$(base64 --wrap=0 "$RUNNER_TEMP/$LIST")"
-            args=(--method PUT "repos/$REPO/contents/sources.json" -f message="$NAME $VERSION" -f content="$content")
+            args=(--method PUT "repos/$REPO/contents/sources.json" -f message="Update sources.json" -f content="$content")
             if [ -f "$RUNNER_TEMP/current.json" ]; then args+=(-f sha="$(jq -r .sha "$RUNNER_TEMP/current.json")"); fi
             gh api "${args[@]}" > /dev/null
+            gh release create "$TAG" "$RUNNER_TEMP/$APK" --repo "$REPO" --title "$TAG" --notes "$CODE_LINE" --latest=false
           else
             gh release create "$TAG" "$RUNNER_TEMP/$APK" "$RUNNER_TEMP/$LIST" --repo "$REPO" \
               --target "$GITHUB_SHA" --title "$TAG" --notes "$CODE_LINE" --generate-notes
