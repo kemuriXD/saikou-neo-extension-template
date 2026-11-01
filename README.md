@@ -26,9 +26,10 @@ lowercase words with dots, usually starting with your GitHub name.
 
 To give it a logo, put a square PNG named `icon.png` next to
 `gradle.properties`. It can be up to 1024 x 1024 pixels and 256 KB, and 512 x
-512 is plenty. The build makes it the APK's icon, and Release uploads it and
-adds its link to the list, so Saikou Neo shows it beside your source's name.
-Without one, the app shows the name's first letter.
+512 is plenty. The build makes it the APK's icon, and Release adds a link to it
+in the list, so Saikou Neo shows it beside your source's name. The link points
+to the `icon.png` in your repo, so the release itself only has the APK and the
+list. Without one, the app shows the name's first letter.
 
 ### 3. Write your code
 
@@ -133,9 +134,9 @@ separate public repo instead. Several private sources can share one, and its
    (its name) and `RELEASES_CLIENT_ID` (the app's client ID), and the secret
    `RELEASES_APP_KEY` (the private key file's text).
 
-Release as before. The APK goes on a release in the public repo, and the
-source's entry in its `sources.json` is updated. The code in the release notes
-is for that list.
+Release as before. The APK goes on a release in the public repo, the logo goes
+in that repo's `icons/` folder, and the source's entry in its `sources.json` is
+updated. The code in the release notes is for that list.
 
 GitHub can't write notes for private code, so here the version's section in
 `CHANGELOG.md` is required. Release stops before the build if it's missing.
