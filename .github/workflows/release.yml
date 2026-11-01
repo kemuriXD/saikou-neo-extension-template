@@ -7,7 +7,7 @@ name: Release
 # secrets.
 #
 # To keep your code private, release into a public repo instead. Set the
-# variables RELEASES_OWNER and RELEASES_REPO to that repo, and RELEASES_APP_ID and
+# variables RELEASES_OWNER and RELEASES_REPO to that repo, and RELEASES_CLIENT_ID and
 # the secret RELEASES_APP_KEY to a GitHub App installed on it with Contents: read
 # and write. Its sources.json then lists every source released into it.
 on:
@@ -48,7 +48,7 @@ jobs:
         if: vars.RELEASES_REPO != ''
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.RELEASES_APP_ID }}
+          client-id: ${{ vars.RELEASES_CLIENT_ID }}
           private-key: ${{ secrets.RELEASES_APP_KEY }}
           owner: ${{ vars.RELEASES_OWNER }}
           repositories: ${{ vars.RELEASES_REPO }}
@@ -145,18 +145,30 @@ jobs:
             > "$RUNNER_TEMP/$LIST"
           cat "$RUNNER_TEMP/$LIST"
 
-      # The code stays the same for every release, since the list's link doesn't change.
+      # A lowercase code is easy to type on a TV, and it stays the same for every release, since
+      # the list's link doesn't change. Set the SHORT_CODE variable to pick your own.
       - name: Get a v.gd code for the list
         id: code
         env:
           LIST_URL: ${{ steps.target.outputs.list_url }}
+          WANTED: ${{ vars.SHORT_CODE }}
         run: |
-          answer="$(curl -sS --max-time 15 --get "https://v.gd/create.php" --data format=json --data-urlencode "url=$LIST_URL" || true)"
-          short="$(echo "$answer" | jq -r '.shorturl // empty' 2>/dev/null || true)"
-          if [ -n "$short" ]; then
-            echo "line=Add it in Saikou Neo with the code **${short##*/}**, or the link $LIST_URL" >> "$GITHUB_OUTPUT"
-          else
+          code="$(echo "${WANTED:-s$(printf '%s' "$LIST_URL" | sha256sum | cut -c1-7)}" | tr '[:upper:]' '[:lower:]')"
+          vgd() { curl -sS --max-time 15 --get "https://v.gd/$1.php" --data format=json "${@:2}" || true; }
+          taken="$(vgd forward --data-urlencode "shorturl=$code" | jq -r '.url // empty' 2>/dev/null || true)"
+          if [ "$taken" = "$LIST_URL" ]; then
+            short="$code"
+          elif [ -z "$taken" ]; then
+            answer="$(vgd create --data-urlencode "url=$LIST_URL" --data-urlencode "shorturl=$code")"
+            short="$(echo "$answer" | jq -r '.shorturl // empty' 2>/dev/null || true)"
+            short="${short##*/}"
             reason="$(echo "$answer" | jq -r '.errormessage // empty' 2>/dev/null || true)"
+          else
+            reason="the code $code already leads somewhere else. Set SHORT_CODE to another one"
+          fi
+          if [ -n "$short" ]; then
+            echo "line=Add it in Saikou Neo with the code **$short**, or the link $LIST_URL" >> "$GITHUB_OUTPUT"
+          else
             echo "line=Add it in Saikou Neo with the link $LIST_URL (v.gd didn't give a code: ${reason:-no answer})" >> "$GITHUB_OUTPUT"
           fi
 

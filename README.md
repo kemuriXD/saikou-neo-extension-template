@@ -91,7 +91,10 @@ https://github.com/<you>/<repo>/releases/latest/download/source.json
 ```
 
 The code and the link stay the same for every release and always lead to your
-newest version.
+newest version. The code is all lowercase, so it's easy to type on a TV. To
+choose it yourself, add a variable named `SHORT_CODE` under **Settings > Secrets
+and variables > Actions**, such as `mysource`. It needs 5 to 30 letters, numbers
+or underscores, and nobody else can be using it on v.gd.
 
 ## Update your source
 
@@ -112,7 +115,7 @@ separate public repo instead. Several private sources can share one, and its
    key.
 3. In your private repo, under **Settings > Secrets and variables > Actions**,
    add the variables `RELEASES_OWNER` (the public repo's owner), `RELEASES_REPO`
-   (its name) and `RELEASES_APP_ID` (the app's id), and the secret
+   (its name) and `RELEASES_CLIENT_ID` (the app's client ID), and the secret
    `RELEASES_APP_KEY` (the private key file's text).
 
 Release as before. The APK goes on a release in the public repo, and the
