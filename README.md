@@ -87,10 +87,18 @@ Never commit `release.jks`. The template's `.gitignore` already leaves it out.
 
 ### 5. Release it
 
-Go to **Actions > Release > Run workflow**. It runs your tests, builds a signed
-APK and puts it on a new release with a `source.json` list. The release notes
-give a short v.gd code for that list. In Saikou Neo, open **Settings > Sources >
-Add a source** and type the code, or the link:
+First say what's in this version in
+[`CHANGELOG.md`](CHANGELOG.md), under a heading with the version number, such
+as `## 1.0.0`. The template starts with one for 1.0.0.
+
+Then go to **Actions > Release > Run workflow**. It runs your tests, builds a
+signed APK and puts it on a new release with a `source.json` list. The release
+notes have three parts: how to add the source, what's new (your changelog
+section) and the files. If the changelog has no section for the version,
+GitHub writes "What's new" from your commits instead.
+
+The notes give a short v.gd code for the list. In Saikou Neo, open **Settings >
+Sources > Add a source** and type the code, or the link:
 
 ```text
 https://github.com/<you>/<repo>/releases/latest/download/source.json
@@ -105,8 +113,9 @@ or underscores, and nobody else can be using it on v.gd.
 ## Update your source
 
 Raise `source.version` in `gradle.properties`, such as from `1.0.0` to `1.1.0`,
-and run the Release workflow again. Each version can only be released once.
-People get the update by adding the code or link again.
+add a `## 1.1.0` section to the top of `CHANGELOG.md`, and run the Release
+workflow again. Each version can only be released once. People who already
+added your source get the update in **Settings > Sources**.
 
 ## Keep your code private
 
@@ -127,6 +136,10 @@ separate public repo instead. Several private sources can share one, and its
 Release as before. The APK goes on a release in the public repo, and the
 source's entry in its `sources.json` is updated. The code in the release notes
 is for that list.
+
+GitHub can't write notes for private code, so here the version's section in
+`CHANGELOG.md` is required. Release stops before the build if it's missing.
+Write it for people using the app, because the notes are public.
 
 The app's bot is the only author the public repo shows. Releases, APKs and
 logos are named by a short hash of the source's id, so the public repo's tags

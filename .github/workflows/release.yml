@@ -3,8 +3,9 @@ name: Release
 # Run this from the Actions tab to release the version in gradle.properties. It
 # builds a signed APK and puts it on a new GitHub release with a source.json list
 # that points to it. The list's link, or the v.gd code in the release notes, is
-# what you add in Saikou Neo. The signing key and its password are repository
-# secrets.
+# what you add in Saikou Neo. The notes' "What's new" is this version's section
+# in CHANGELOG.md, or GitHub's own notes if there isn't one. The signing key and
+# its password are repository secrets.
 #
 # To keep your code private, release into a public repo instead. Set the
 # variables RELEASES_OWNER and RELEASES_REPO to that repo, and RELEASES_CLIENT_ID and
@@ -42,6 +43,24 @@ jobs:
             echo "version=$(setting version)"
             echo "api=$(setting apiVersion)"
           } >> "$GITHUB_OUTPUT"
+
+      # "What's new" is the lines under this version's "## 1.2.3" heading in CHANGELOG.md, up to
+      # the next heading. Code released into a shared repo is private, so GitHub can't write notes
+      # for it and the section is required. A source's own repo falls back to GitHub's notes.
+      - name: Read what changed
+        env:
+          VERSION: ${{ steps.source.outputs.version }}
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            awk -v want="## $VERSION" '$0 == want { found = 1; next } found && /^## / { exit } found' CHANGELOG.md \
+              > "$RUNNER_TEMP/changes.md"
+          else
+            : > "$RUNNER_TEMP/changes.md"
+          fi
+          if [ -n "${{ vars.RELEASES_REPO }}" ] && ! grep -q '[^[:space:]]' "$RUNNER_TEMP/changes.md"; then
+            echo "::error::CHANGELOG.md has nothing under \"## $VERSION\". Add what changed before releasing."
+            exit 1
+          fi
 
       - name: Get a token for the public repo
         id: app
@@ -176,10 +195,58 @@ jobs:
             reason="the code $code already leads somewhere else. Set SHORT_CODE to another one"
           fi
           if [ -n "$short" ]; then
-            echo "line=Add it in Saikou Neo with the code **$short**, or the link $LIST_URL" >> "$GITHUB_OUTPUT"
+            echo "code=$short" >> "$GITHUB_OUTPUT"
           else
-            echo "line=Add it in Saikou Neo with the link $LIST_URL (v.gd didn't give a code: ${reason:-no answer})" >> "$GITHUB_OUTPUT"
+            echo "::warning::v.gd didn't give a code, so the notes only have the link: ${reason:-no answer}"
           fi
+
+      # Three parts, each with its own heading: how to add the source, what's new, and the files.
+      # With no changelog section, a source's own repo asks GitHub for the notes it would write.
+      - name: Write the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ steps.target.outputs.repo }}
+          TAG: ${{ steps.target.outputs.tag }}
+          VERSION: ${{ steps.source.outputs.version }}
+          API: ${{ steps.source.outputs.api }}
+          CODE: ${{ steps.code.outputs.code }}
+          LIST_URL: ${{ steps.target.outputs.list_url }}
+          APK: ${{ steps.target.outputs.apk }}
+          ICON: ${{ steps.target.outputs.icon }}
+          LIST: ${{ steps.target.outputs.list }}
+          SHARED: ${{ vars.RELEASES_REPO }}
+        run: |
+          changes="$(sed -e '/[^[:space:]]/,$!d' "$RUNNER_TEMP/changes.md")"
+          if [ -z "$changes" ]; then
+            changes="$(gh api "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" --jq .body \
+              | sed -e "/^## What's Changed/d" -e 's/^## /#### /')"
+          fi
+          {
+            echo "### Add it in Saikou Neo"
+            if [ -n "$CODE" ]; then
+              echo "Settings > Sources > Add a source, then type one of these:"
+              echo
+              echo "- Code: **$CODE**"
+              echo "- Link: $LIST_URL"
+            else
+              echo "Settings > Sources > Add a source, then type this link:"
+              echo
+              echo "- $LIST_URL"
+            fi
+            echo
+            echo "Already added? Settings > Sources offers the update."
+            echo
+            echo "### What's new in $VERSION"
+            echo "$changes"
+            echo
+            echo "### Files"
+            echo "| File | What it is |"
+            echo "| --- | --- |"
+            echo "| \`$APK\` | The source, version $VERSION, for API $API |"
+            if [ -n "$ICON" ]; then echo "| \`$ICON\` | Its logo |"; fi
+            if [ -z "$SHARED" ]; then echo "| \`$LIST\` | The list Saikou Neo reads |"; fi
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
 
       # Only a signed build is named source-release.apk, so an unsigned one stops here.
       - name: Publish the release
@@ -190,7 +257,6 @@ jobs:
           APK: ${{ steps.target.outputs.apk }}
           ICON: ${{ steps.target.outputs.icon }}
           LIST: ${{ steps.target.outputs.list }}
-          CODE_LINE: ${{ steps.code.outputs.line }}
         run: |
           cp source/build/outputs/apk/release/source-release.apk "$RUNNER_TEMP/$APK"
           rm -f "$RUNNER_TEMP/release.jks"
@@ -206,9 +272,9 @@ jobs:
             args=(--method PUT "repos/$REPO/contents/sources.json" -f message="Update sources.json" -f content="$content")
             if [ -f "$RUNNER_TEMP/current.json" ]; then args+=(-f sha="$(jq -r .sha "$RUNNER_TEMP/current.json")"); fi
             gh api "${args[@]}" > /dev/null
-            gh release create "$TAG" "${files[@]}" --repo "$REPO" --title "$TAG" --notes "$CODE_LINE" --latest=false
+            gh release create "$TAG" "${files[@]}" --repo "$REPO" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --latest=false
           else
             gh release create "$TAG" "${files[@]}" "$RUNNER_TEMP/$LIST" --repo "$REPO" \
-              --target "$GITHUB_SHA" --title "$TAG" --notes "$CODE_LINE" --generate-notes
+              --target "$GITHUB_SHA" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
           fi
-          echo "$CODE_LINE" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
