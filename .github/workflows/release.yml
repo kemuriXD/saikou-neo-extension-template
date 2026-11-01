@@ -1,17 +1,24 @@
 name: Release
 
 # Run this from the Actions tab to release the version in gradle.properties. It
-# builds a signed APK and attaches it to a new GitHub release as source.apk. Its
-# link is what you add in Saikou Neo. The signing key and its password are
-# repository secrets.
+# builds a signed APK and puts it on a new GitHub release with a source.json list
+# that points to it. The list's link, or the v.gd code in the release notes, is
+# what you add in Saikou Neo. The signing key and its password are repository
+# secrets.
+#
+# To keep your code private, release into a public repo instead. Set the
+# variables RELEASES_OWNER and RELEASES_REPO to that repo, and RELEASES_APP_ID and
+# the secret RELEASES_APP_KEY to a GitHub App installed on it with Contents: read
+# and write. Its sources.json then lists every source released into it.
 on:
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Releases into a shared repo all edit its sources.json, so they wait for each other.
 concurrency:
-  group: release
+  group: release-${{ vars.RELEASES_REPO || github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -25,17 +32,67 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check this version isn't released yet
-        id: version
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Read the source
+        id: source
         run: |
-          version="$(grep '^source.version=' gradle.properties | cut -d= -f2-)"
-          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "::error::Version $version is already released. Raise source.version in gradle.properties first."
+          setting() { grep "^source.$1=" gradle.properties | cut -d= -f2-; }
+          {
+            echo "name=$(setting name)"
+            echo "id=$(setting id)"
+            echo "version=$(setting version)"
+            echo "api=$(setting apiVersion)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Get a token for the public repo
+        id: app
+        if: vars.RELEASES_REPO != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASES_APP_ID }}
+          private-key: ${{ secrets.RELEASES_APP_KEY }}
+          owner: ${{ vars.RELEASES_OWNER }}
+          repositories: ${{ vars.RELEASES_REPO }}
+
+      # A source's own repo has one source, so its tag is the version and the links say "latest".
+      # A shared repo has many, so each release is named after its source.
+      - name: Work out where it goes
+        id: target
+        env:
+          ID: ${{ steps.source.outputs.id }}
+          VERSION: ${{ steps.source.outputs.version }}
+          SHARED: ${{ vars.RELEASES_OWNER }}/${{ vars.RELEASES_REPO }}
+        run: |
+          if [ -n "${{ vars.RELEASES_REPO }}" ]; then
+            tag="$ID-v$VERSION"
+            {
+              echo "repo=$SHARED"
+              echo "tag=$tag"
+              echo "apk=$ID.apk"
+              echo "apk_url=https://github.com/$SHARED/releases/download/$tag/$ID.apk"
+              echo "list=sources.json"
+              echo "list_url=https://raw.githubusercontent.com/$SHARED/HEAD/sources.json"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "repo=$GITHUB_REPOSITORY"
+              echo "tag=v$VERSION"
+              echo "apk=source.apk"
+              echo "apk_url=https://github.com/$GITHUB_REPOSITORY/releases/latest/download/source.apk"
+              echo "list=source.json"
+              echo "list_url=https://github.com/$GITHUB_REPOSITORY/releases/latest/download/source.json"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check this version isn't released yet
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REPO: ${{ steps.target.outputs.repo }}
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+            echo "::error::$TAG is already released. Raise source.version in gradle.properties first."
             exit 1
           fi
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
       - name: Write the signing key
         env:
@@ -65,12 +122,64 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :source:testDebugUnitTest :source:assembleRelease
 
+      # One entry in the list format Saikou Neo reads. A shared list keeps everyone else's entries.
+      - name: Write the list
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ steps.target.outputs.repo }}
+          ID: ${{ steps.source.outputs.id }}
+          NAME: ${{ steps.source.outputs.name }}
+          VERSION: ${{ steps.source.outputs.version }}
+          API: ${{ steps.source.outputs.api }}
+          APK_URL: ${{ steps.target.outputs.apk_url }}
+          LIST: ${{ steps.target.outputs.list }}
+        run: |
+          list='{"sources":[]}'
+          if [ -n "${{ vars.RELEASES_REPO }}" ] && gh api "repos/$REPO/contents/sources.json" > "$RUNNER_TEMP/current.json" 2>/dev/null; then
+            list="$(jq -r .content "$RUNNER_TEMP/current.json" | base64 --decode)"
+          fi
+          echo "$list" | jq --arg id "$ID" --arg name "$NAME" --arg version "$VERSION" --argjson api "$API" --arg apk "$APK_URL" \
+            '.sources = ([.sources[] | select(.id != $id)] + [{id: $id, name: $name, version: $version, api: $api, apk: $apk}] | sort_by(.name))' \
+            > "$RUNNER_TEMP/$LIST"
+          cat "$RUNNER_TEMP/$LIST"
+
+      # The code stays the same for every release, since the list's link doesn't change.
+      - name: Get a v.gd code for the list
+        id: code
+        env:
+          LIST_URL: ${{ steps.target.outputs.list_url }}
+        run: |
+          answer="$(curl -sS --max-time 15 --get "https://v.gd/create.php" --data format=json --data-urlencode "url=$LIST_URL" || true)"
+          short="$(echo "$answer" | jq -r '.shorturl // empty' 2>/dev/null || true)"
+          if [ -n "$short" ]; then
+            echo "line=Add it in Saikou Neo with the code **${short##*/}**, or the link $LIST_URL" >> "$GITHUB_OUTPUT"
+          else
+            reason="$(echo "$answer" | jq -r '.errormessage // empty' 2>/dev/null || true)"
+            echo "line=Add it in Saikou Neo with the link $LIST_URL (v.gd didn't give a code: ${reason:-no answer})" >> "$GITHUB_OUTPUT"
+          fi
+
       # Only a signed build is named source-release.apk, so an unsigned one stops here.
       - name: Publish the release
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REPO: ${{ steps.target.outputs.repo }}
+          TAG: ${{ steps.target.outputs.tag }}
+          APK: ${{ steps.target.outputs.apk }}
+          NAME: ${{ steps.source.outputs.name }}
+          VERSION: ${{ steps.source.outputs.version }}
+          LIST: ${{ steps.target.outputs.list }}
+          CODE_LINE: ${{ steps.code.outputs.line }}
         run: |
-          cp source/build/outputs/apk/release/source-release.apk "$RUNNER_TEMP/source.apk"
-          gh release create "$TAG" "$RUNNER_TEMP/source.apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          cp source/build/outputs/apk/release/source-release.apk "$RUNNER_TEMP/$APK"
           rm -f "$RUNNER_TEMP/release.jks"
+          if [ -n "${{ vars.RELEASES_REPO }}" ]; then
+            gh release create "$TAG" "$RUNNER_TEMP/$APK" --repo "$REPO" --title "$NAME $VERSION" --notes "$CODE_LINE" --latest=false
+            content="$(base64 --wrap=0 "$RUNNER_TEMP/$LIST")"
+            args=(--method PUT "repos/$REPO/contents/sources.json" -f message="$NAME $VERSION" -f content="$content")
+            if [ -f "$RUNNER_TEMP/current.json" ]; then args+=(-f sha="$(jq -r .sha "$RUNNER_TEMP/current.json")"); fi
+            gh api "${args[@]}" > /dev/null
+          else
+            gh release create "$TAG" "$RUNNER_TEMP/$APK" "$RUNNER_TEMP/$LIST" --repo "$REPO" \
+              --target "$GITHUB_SHA" --title "$TAG" --notes "$CODE_LINE" --generate-notes
+          fi
+          echo "$CODE_LINE" >> "$GITHUB_STEP_SUMMARY"
