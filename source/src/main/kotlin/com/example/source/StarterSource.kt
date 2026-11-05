@@ -20,8 +20,17 @@ class StarterSource : SourceExtension {
      * (`episode.number`). Return one server for each place it plays from:
      *
      * ```
-     * Server(id = "<what stream() needs, such as a link>", name = "Server 1", edition = Edition.Sub, runtime = null)
+     * Server(
+     *     id = "<what stream() needs, such as a link>",
+     *     name = "Server 1",
+     *     edition = Edition.Sub,
+     *     runtime = null,
+     *     qualities = listOf(1080, 720),
+     * )
      * ```
+     *
+     * Fill `qualities` only when the site lists them next to its servers.
+     * Otherwise leave it out.
      *
      * An empty list tells the app this source doesn't have the episode.
      */
