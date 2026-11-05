@@ -13,6 +13,13 @@ import ani.saikou.neo.extension.api.Stream
  */
 class StarterSource : SourceExtension {
     /**
+     * Your site's address, such as `"https://example.com/"`. When someone checks
+     * this source in Settings > Sources, the app opens it to see if the site is
+     * up. Leave it null if the source has no one site.
+     */
+    override val siteUrl: String? = null
+
+    /**
      * Find [episode] on your site and list the servers that have it.
      *
      * The episode has the anime's titles (`episode.anime.titles.romaji`,
