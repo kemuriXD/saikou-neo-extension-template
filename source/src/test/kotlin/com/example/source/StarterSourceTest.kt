@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class StarterSourceTest {
     // What the app sends for an episode it picked from its catalogue. Use a show your site has.
@@ -28,6 +29,11 @@ class StarterSourceTest {
         )
 
     private val source = StarterSource()
+
+    @Test
+    fun namesNoSiteYet() {
+        assertNull(source.siteUrl)
+    }
 
     @Test
     fun hasNoServersYet() =
